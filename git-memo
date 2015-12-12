@@ -69,6 +69,10 @@ usage() {
   echo "Set memo.user.name in your gitconfig"
   echo ""
   git notes -h|sed -e 's/git notes/git memo/' -e 's/\[--ref <notes-ref>\] //'
+  echo ""
+  echo "Original features;"
+  echo "git memo push <remote>"
+  echo "git memo fetch <remote>"
 }
 
 precond() {
