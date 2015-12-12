@@ -89,6 +89,22 @@ precond() {
   fi
 }
 
+push() {
+  local name="$1"
+  shift 1
+  local remote="$1"
+
+  git push "$remote" refs/notes/$name
+}
+
+fetch() {
+  local name="$1"
+  shift 1
+  local remote="$1"
+
+  git fetch "$remote" refs/notes/*:refs/notes/*
+}
+
 main() {
   if [ "$1" = "--ref" ]; then
     git notes "$@" && exit $? # works as original git-notes
@@ -125,7 +141,14 @@ main() {
     name=$(echo "$name"|sed 's/ /_/g'|tr "[A-Z]" "[a-z]")
   } # end .load_name
 
-  git notes --ref "$name" "$@"
+  local cmd="$1"
+  shift 1
+
+  if has "$cmd"; then
+    eval "$cmd" "$name" "$@"
+  else
+    git notes --ref "$name" "$cmd" "$@"
+  fi
 }
 
 precond && main "$@"
