@@ -1,3 +1,158 @@
 #!/usr/bin/env bash
 
-echo "hello"
+## const
+
+LB_GIT_VERSION="1.7.0"
+
+## utility
+
+die() {
+  echo "$@" >&2
+  exit 1
+}
+
+empty() {
+  [ "__" = "__$1" ]
+}
+
+not_empty() {
+  [ ! "__" = "__$1" ]
+}
+
+has() {
+  not_empty "$1" && type "$1" >/dev/null 2>&1
+}
+
+ask() {
+  declare -a answers=( "yes" "no" )
+  local ans idx
+  select ans in ${answers[@]}
+  do
+    if not_empty "$ans"; then
+      for ((idx=0; idx < ${#answers[*]}; idx++)); do
+        [ "$ans" = "${answers[$idx]}" ] && return $idx
+      done
+
+      die "unknown answer was caught"
+    fi
+  done
+}
+
+contains() {
+  empty "$1" && return $?
+  empty "$2" && return $?
+
+  echo "$1"|grep "$2" >/dev/null 2>&1
+}
+
+zip_stream() {
+  let "$# < 2" && die "zip_stream() needs 2 arguments"
+
+  awk '
+    BEGIN {
+      while(1) {
+        if (((getline first < ARGV[1]) > 0) && ((getline second < ARGV[2]) > 0)) {
+          print first,second
+        } else {
+          close(ARGV[1]);
+          close(ARGV[2]);
+          break
+        }
+      }
+    }
+  ' $1 $2
+}
+
+## core
+
+usage() {
+  echo "Set memo.user.name in your gitconfig"
+  echo ""
+  git notes -h|sed -e 's/git notes/git memo/' -e 's/\[--ref <notes-ref>\] //'
+  echo ""
+  echo "Original features;"
+  echo "git memo push <remote>"
+  echo "git memo fetch <remote>"
+}
+
+precond() {
+  if has "git"; then
+    # version check
+
+    local -r git_version=$(git --version|awk '$0=$3')
+    local line
+    while read line; do
+      if (set -- $line; let "$1>$2"; ); then
+        : && return $? # satisfy!
+      fi
+    done < <(zip_stream <(echo "${git_version}"|tr "." "\n") <(echo "$LB_GIT_VERSION"|tr "." "\n"))
+
+    die "Current git version doesn't support git-notes"
+  else
+    die "git not found"
+  fi
+}
+
+push() {
+  local name="$1"
+  shift 1
+  local remote="$1"
+
+  git push "$remote" refs/notes/$name
+}
+
+fetch() {
+  local name="$1"
+  shift 1
+  local remote="$1"
+
+  git fetch "$remote" refs/notes/*:refs/notes/*
+}
+
+main() {
+  if [ "$1" = "--ref" ]; then
+    git notes "$@" && exit $? # works as original git-notes
+  fi
+
+  if [ "__-h" == "__$1" ]; then
+    usage && exit 0
+  fi
+
+  local name
+
+  { # load_name
+    name=$(git config --get memo.user.name)
+
+    empty "$name" && {
+      echo "memo.user.name is not set."
+
+      name=$(git config --get user.name)
+      not_empty "$name" && {
+        echo "user.name found"
+        echo "Use user.name instead of memo.user.name?"
+
+        if ask; then
+          git config --add memo.user.name "$name" && echo "configured"
+        else
+          echo "Input author name"; read name
+          empty "$name" && die "abort..."
+          git config --add memo.user.name "$name" && echo "configured"
+        fi
+      }
+    }
+
+    # fit to refs name specifications
+    name=$(echo "$name"|sed 's/ /_/g'|tr "[A-Z]" "[a-z]")
+  } # end .load_name
+
+  local cmd="$1"
+  shift 1
+
+  if has "$cmd"; then
+    eval "$cmd" "$name" "$@"
+  else
+    git notes --ref "$name" "$cmd" "$@"
+  fi
+}
+
+precond && main "$@"
