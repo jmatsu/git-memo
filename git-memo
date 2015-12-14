@@ -111,7 +111,8 @@ fetch() {
 
 main() {
   if [ "$1" = "--ref" ]; then
-    git notes "$@" && exit $? # works as original git-notes
+    git notes "$@" # works as original git-notes
+    exit $?
   fi
 
   if [ "__-h" == "__$1" ]; then
